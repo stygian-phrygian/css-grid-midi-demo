@@ -1,0 +1,399 @@
+<html>
+<!-- turn off cache -->
+<meta http-equiv="cache-control" content="max-age=0" />
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="expires" content="0" />
+<meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT" />
+<meta http-equiv="pragma" content="no-cache" />
+<style>
+    body {
+      background-color: black;
+    }
+
+	#grid-container {
+	  width: 100%;
+	  height: 100%;
+	  display: grid;
+	  grid-template-columns: 19% repeat(3, 27%); /* 4  columns  */
+	  grid-template-rows: repeat(4, 1fr); /* 4 rows  */
+	  grid-template-areas: "slider cell-0 cell-1 cell-2"
+                           "slider cell-3 cell-4 cell-5"
+                           "slider cell-6 cell-7 cell-8"
+                           "slider cell-9 cell-10 cell-11";
+	}
+
+    #slider {
+      grid-area: slider;
+      background-color: black;
+      /* border */
+      border-color: #00f3f9; /* neon blue */
+      border-width: 2px;
+      border-style: solid;
+      border-radius: 20px;
+      /* text */
+      color: #e120f0; /* neon pink kind of */
+      font-family: lato;
+      font-weight: lighter;
+      font-size: 300%;
+      /* center text inside div (found here: https://stackoverflow.com/a/25799339) */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* vertical text */
+      /* writing-mode: vertical-rl; */
+
+      /* adjust newlines to simulate vertical text*/
+      white-space: nowrap;
+      /*line-height: 22px;*/
+    }
+
+	.cells {
+      background-color: black;
+      /* text */
+      color: #e120f0; /* neon pink kind of */
+      font-family: lato;
+      font-weight: lighter;
+      font-size: 200%;
+      /* center text inside div (found here: https://stackoverflow.com/a/25799339) */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* add border */
+      border-color: #00fe00; /* neon green */
+      border-width: 0 1px 1px 0;
+      border-style: solid;
+      border-radius: 10px;
+    }
+
+    #cell-0 {
+          grid-area: cell-0;
+    }
+
+    #cell-1 {
+          grid-area: cell-1;
+    }
+
+    #cell-2 {
+          grid-area: cell-2;
+    }
+
+    #cell-3 {
+          grid-area: cell-3;
+    }
+
+    #cell-4 {
+          grid-area: cell-4;
+    }
+
+    #cell-5 {
+          grid-area: cell-5;
+    }
+
+    #cell-6 {
+          grid-area: cell-6;
+    }
+
+    #cell-7 {
+          grid-area: cell-7;
+    }
+
+    #cell-8 {
+          grid-area: cell-8;
+    }
+
+    #cell-9 {
+          grid-area: cell-9;
+    }
+
+    #cell-10 {
+          grid-area: cell-10;
+    }
+
+    #cell-11 {
+          grid-area: cell-11;
+    }
+
+
+</style>
+<body>
+  <div id="grid-container">
+	<div id="slider"></div> 
+    <div id="cell-0"  class="cells">0</div>
+    <div id="cell-1"  class="cells">1</div>
+    <div id="cell-2"  class="cells">2</div>
+    <div id="cell-3"  class="cells">3</div>
+    <div id="cell-4"  class="cells">4</div>
+    <div id="cell-5"  class="cells">5</div>
+    <div id="cell-6"  class="cells">6</div>
+    <div id="cell-7"  class="cells">7</div>
+    <div id="cell-8"  class="cells">8</div>
+    <div id="cell-9"  class="cells">9</div>
+    <div id="cell-10" class="cells">10</div>
+    <div id="cell-11" class="cells">11</div>
+  </div>
+</body>    
+<script type="text/javascript">
+
+// the minimum amount of movement necessary before 
+// GUI/MIDI events are triggered by the callbacks below
+// NB. these are specified as numbers from 0-1
+// which represent *relative* change within the slider element
+// so if the element is 100px wide, then an xDelta of 0.1
+// would equal 10px.
+let xSliderDelta = 0.05;
+let ySliderDelta = 0.05;
+let lastXSliderPosition = 0;
+let lastYSliderPosition = 0;
+
+// choose which midi channel to stream over
+let MIDIChannel = 0; // <--- channel 1
+let MIDIPitchTranspose = 36;
+let CCStatus = 176 + MIDIChannel;
+let NoteOnStatus = 144 + MIDIChannel;
+let NoteOffStatus = 128 + MIDIChannel;
+// if you wanna change which pitch is sent by witch cell
+// change the values within the following map object
+let cellNumberToMidiNoteNumber =  
+{0: 0,
+ 1: 1,
+ 2: 2,
+ 3: 3,
+ 4: 4,
+ 5: 5,
+ 6: 6,
+ 7: 7,
+ 8: 8,
+ 9: 9,
+ 10: 10,
+ 11: 11}
+
+// choose midi CC#s for the xy data
+let xCellCCNumber = 10;
+let yCellCCNumber = 11
+let xSliderCCNumber = 12;
+let ySliderCCNumber = 13;
+
+// midi output port our callbacks will send midi into
+let midiOutputPort;
+let midiSystem; // <--- this is for debugging
+let midiErrorString = "MIDI is unavailable";
+ 
+function midiAccessSuccess (midi) {
+    listInputsAndOutputs(midi);
+    // save reference to midi output port (which our callbacks will send data through)
+    // this is a hacky... method to get the first value of the outputs map (works on ubuntu at least)
+    midiOutputPort = midi.outputs.get(midi.outputs.keys().next().value);
+    // save reference to entire midi system (for debugging)
+    midiSystem = midi;
+}
+ 
+function midiAccessFailure () {
+    console.error(midiErrorString)
+    // register a dummy object for midiOutput so our callbacks 
+    // don't keep accessing undefined
+    midiOutputPort = {send: () => {console.error(midiErrorString);}};
+}
+
+// lovingly borrowed from here: 
+// https://webaudio.github.io/web-midi-api/#listing-inputs-and-outputs
+function listInputsAndOutputs( midiAccess ) {
+  for (var entry of midiAccess.inputs) {
+    var input = entry[1];
+    console.log( "Input port [type:'" + input.type + "'] id:'" + input.id +
+      "' manufacturer:'" + input.manufacturer + "' name:'" + input.name +
+      "' version:'" + input.version + "'" );
+  }
+
+  for (var entry of midiAccess.outputs) {
+    var output = entry[1];
+    console.log( "Output port [type:'" + output.type + "'] id:'" + output.id +
+      "' manufacturer:'" + output.manufacturer + "' name:'" + output.name +
+      "' version:'" + output.version + "'" );
+  }
+}
+ 
+// turn off all notes on all channels
+function panic(midi) {
+    if(midi == undefined) { return; }
+
+    // assemble note off messages
+    var messages = [];
+    var noteNumber;
+    var channel;
+    for(channel = 0; channel < 16; ++channel) {
+        var noteOffStatus = 128 + channel;
+        for(noteNumber = 0; noteNumber < 128; ++noteNumber) {
+            messages.push(noteOffStatus, noteNumber, 0);
+        }
+    }
+    console.log("sending midi note off to all channels for every possible note number");
+
+    // send the messages to each output
+    midi.outputs.forEach(function (output) { output.send(messages); }); 
+}
+
+// register panic() to run on window close
+window.addEventListener("beforeunload", function(e){
+    if(midiSystem) { panic(midiSystem); }
+}, false);
+
+//create functions to send midi
+// send slider x,y position data over midi
+function sendSliderPosition(x,y) {
+    // convert x,y (which should be in range 0-1) to integers in range 0-127
+    let xMIDI = Math.floor(x * 127); // 0.0078740 == 1/127
+    let yMIDI = Math.floor(y * 127);
+    midiOutputPort.send([CCStatus, xSliderCCNumber, xMIDI]);
+    midiOutputPort.send([CCStatus, ySliderCCNumber, yMIDI]);
+}
+// send cell x,y position data over midi
+// ...does this function make sense for mouse events?
+function sendCellPosition(x,y) {
+    // convert x,y (which should be in range 0-1) to integers in range 0-127
+    let xMIDI = Math.floor(x * 127); // 0.0078740 == 1/127
+    let yMIDI = Math.floor(y * 127);
+    midiOutputPort.send([CCStatus, xCellCCNumber, xMIDI]);
+    midiOutputPort.send([CCStatus, yCellCCNumber, yMIDI]);
+}
+function sendCellPress(cellNumber) {
+    let velocity = 96; // <--- almost full volume
+    midiOutputPort.send([NoteOnStatus, cellNumber+MIDIPitchTranspose, velocity]);
+}
+function sendCellRelease(cellNumber) {
+    let velocity = 96; // <--- almost full volume
+    midiOutputPort.send([NoteOffStatus, cellNumber+MIDIPitchTranspose, velocity]);
+}
+
+// shamelessly adapted from here:
+// https://stackoverflow.com/a/16156057
+// gets relative x y position of an event within an element
+// returns an object with x and y keys with values between 0-1
+function getRelativeXYPosition(e) {
+    var m_posx = 0, m_posy = 0, e_posx = 0, e_posy = 0,
+           obj = e.srcElement;
+    //get mouse position on document crossbrowser
+    if (!e){e = window.event;}
+    if (e.pageX || e.pageY){
+        m_posx = e.pageX;
+        m_posy = e.pageY;
+    } else if (e.clientX || e.clientY){
+        m_posx = e.clientX + document.body.scrollLeft
+                 + document.documentElement.scrollLeft;
+        m_posy = e.clientY + document.body.scrollTop
+                 + document.documentElement.scrollTop;
+    }
+    //get parent element position in document
+    if (obj.offsetParent){
+        do { 
+            e_posx += obj.offsetLeft;
+            e_posy += obj.offsetTop;
+        } while (obj = obj.offsetParent);
+    }
+    // mouse position minus elm position is mouseposition relative to element:
+    // return position as a floating point number between 0-1
+    return {
+        x: (m_posx-e_posx)/e.srcElement.offsetWidth,
+        y: (m_posy-e_posy)/e.srcElement.offsetHeight
+    };
+}
+
+function cellPress(e) {
+  e.preventDefault();
+  // highlight cell when pressed
+  e.srcElement.setAttribute(
+          "style",
+          "color: red; font-weight: bold; border-color: red; border-width: 4px;");
+  // send midi
+  let cellNumber = cellNumberToMidiNoteNumber[e.srcElement.innerText];
+  setTimeout(function () {sendCellPress(cellNumber);}, 0);
+  console.log(e);
+}
+function cellRelease(e) {
+  e.preventDefault();
+  // un-highlight cell when released
+  e.srcElement.setAttribute(
+          "style",
+          "color: e120f0; font-weight: lighter; border-color: #00fe00; border-width: 0 1px 1px 0;");
+  let cellNumber = cellNumberToMidiNoteNumber[e.srcElement.innerText];
+  setTimeout(function () {sendCellRelease(cellNumber);}, 0);
+  console.log(e);
+}
+function cellMove(e) {
+  e.preventDefault();
+  // not sure what to do here... could send cell position as well but eh.  That's a lot of midi data.
+  // pass
+  console.log(e);
+}
+
+// update slider position using relative XY position
+let sliderElement = document.querySelector("#slider");
+function displaySliderPosition(x, y) {
+  let xTruncated = x.toFixed(2);
+  let yTruncated = y.toFixed(2);
+  sliderElement.innerText = "x: "+xTruncated+"\ny: "+yTruncated;
+  // hexidecimal version
+  // let xTruncated = "0x"+(Math.round(x * 127)).toString(16);
+  // let yTruncated = "0x"+(Math.round(y * 127)).toString(16);
+  // sliderElement.innerText = xTruncated+"\n"+yTruncated;
+}
+
+// slider event callback (to stop the event queue from being overwhelmed)
+var updateSliderPositionTimeoutID = setTimeout(function () {}, 0);
+function updateSliderPosition(e) {
+  // prevent default event behavior
+  e.preventDefault();
+  clearTimeout(updateSliderPositionTimeoutID);
+  updateSliderPositionTimeoutID = setTimeout(function () {
+    // get XY position relative to slider
+    let {x, y} = getRelativeXYPosition(e);
+    // only do anything if enough change has happened (to not overwhelm the callback queue)
+    if( Math.abs(y-lastYSliderPosition)>=ySliderDelta ||
+        Math.abs(x-lastXSliderPosition)>=xSliderDelta ) {
+      // send position data
+      sendSliderPosition(x, y);
+      // update slider gui with position data
+      setTimeout(function () { displaySliderPosition(x, y);}, 0);
+      // save last x and y
+      lastXSliderPosition = x;
+      lastYSliderPosition = y
+    }
+  }, 0);
+  // debug
+  // console.log(e);
+}
+// slider event callback (for use with touch)
+function updateSliderTouchPosition(e) {
+  let t = e.changedTouches[e.changedTouches.length - 1]; // get last touch (possibly multiple)
+  updateSliderPosition(t);
+}
+
+window.onload = function () {
+    
+  // check for midi availability
+  if (navigator.requestMIDIAccess) {
+      navigator.requestMIDIAccess()
+          .then(midiAccessSuccess, midiAccessFailure);
+  }
+  
+  // add event listeners to each of the "pressable" cells
+  document.querySelectorAll(".cells").forEach((element) => {
+    element.addEventListener("mousedown" , cellPress);
+    element.addEventListener("touchstart", cellPress);
+    //element.addEventListener("mousemove" , cellMove);
+    //element.addEventListener("touchmove" , cellMove);
+    element.addEventListener("mouseup"   , cellRelease);
+    element.addEventListener("touchend"  , cellRelease);
+  });
+
+  // add slider event listeners
+  let slider = document.querySelector("#slider");
+  slider.addEventListener("mousedown" , updateSliderPosition);
+  slider.addEventListener("touchstart", updateSliderTouchPosition);
+  slider.addEventListener("mousemove" , updateSliderPosition);
+  slider.addEventListener("touchmove" , updateSliderTouchPosition);
+  slider.addEventListener("mouseup"   , updateSliderPosition);
+  slider.addEventListener("touchend"  , updateSliderTouchPosition);
+}
+
+</script>
+</html>
