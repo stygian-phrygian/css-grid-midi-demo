@@ -1,6 +1,6 @@
 
 # CSS Grid & Web-MIDI Demo 
-An (simple) demo of the new CSS grid & Web-MIDI APIs.  Complete with a cyberpunk color scheme.
+A (simple) demo of the new CSS grid & Web-MIDI APIs.  Complete with a cyberpunk color scheme.
 
 ### Usage:
 - Open up index.html (all the css and javascript is included already in index.html for convenience).
